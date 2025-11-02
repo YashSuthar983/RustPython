@@ -484,7 +484,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           if [ -n "$(git status --porcelain)" ]; then
-          git add -u
+            git add .
             git commit -m "Auto-format code [skip ci]"
             git push
             echo "formatted=true" >> $GITHUB_OUTPUT
@@ -492,8 +492,20 @@ jobs:
             echo "formatted=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Comment on PR if formatting was applied
+      - name: Find PR for this branch
         if: steps.commit.outputs.formatted == 'true' && github.event_name == 'pull_request'
+        id: find_pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const {owner, repo} = context.repo;
+            const prNumber = context.issue.number;
+            if (prNumber) {
+              core.setOutput('number', String(prNumber));
+            }
+
+      - name: Comment on PR if formatting was applied
+        if: steps.find_pr.outputs.number
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           message: |
