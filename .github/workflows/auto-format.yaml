@@ -1,0 +1,73 @@
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+  push:
+  pull_request:
+    types: [unlabeled, opened, synchronize, reopened]
+  workflow_dispatch:
+
+name: Auto format
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+jobs:
+  auto_format_commit:
+    permissions:
+      contents: write
+      pull-requests: write
+    name: Auto-format code
+    runs-on: ubuntu-latest
+    if: |
+      ${{ 
+        github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' ||
+        (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && !contains(github.event.workflow_run.head_commit.message, '[skip ci]')) ||
+        (github.event_name == 'push' && !contains(github.event.head_commit.message, '[skip ci]'))
+      }}
+    concurrency:
+      group: fmt-${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref }}
+      cancel-in-progress: true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.head_ref || github.ref_name }}
+          repository: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_repository.full_name || github.repository }}
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Run cargo fmt
+        run: |
+          echo "Running cargo fmt --all"
+          cargo fmt --all
+
+      - name: Commit and push if changes
+        id: commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain)" ]; then
+          git add -u
+            git commit -m "Auto-format code [skip ci]"
+            git push
+            echo "formatted=true" >> $GITHUB_OUTPUT
+          else
+            echo "formatted=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Comment on PR if formatting was applied
+        if: steps.commit.outputs.formatted == 'true' && (github.event_name == 'pull_request' || github.event.workflow_run.event == 'pull_request')
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          message: |
+            Code has been automatically formatted.
+            No action needed.
+            the changes were committed with `[skip ci]`.
