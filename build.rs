@@ -9,6 +9,9 @@ fn main() {
             return;
         }
         res.compile()
-            .map_err(|e| {                println!("cargo:warning=Failed to compile Windows resources: {e}"); }).ok();
+            .map_err(|e| {
+                println!("cargo:warning=Failed to compile Windows resources: {e}");
+            })
+            .ok();
     }
 }
