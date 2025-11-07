@@ -22,7 +22,7 @@ jobs:
       pull-requests: write
     name: Auto-format PR code
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 60
 
     steps:
       - name: Checkout PR branch
@@ -34,14 +34,19 @@ jobs:
           fetch-depth: 0
 
       - name: Wait for CI workflow to complete
+        id: wait_for_ci
+        timeout-minutes: 60
         uses: lewagon/wait-on-check-action@v1.3.4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           wait-interval: 30
-          # Wait for all other workflows (especially CI) to complete
-          running-workflow-name: 'Auto-format PR code'
+          check-regexp: '^CI( / .+)?$'
           allowed-conclusions: success,skipped
+          verbose: true
+
+      - name: Log CI completion
+        run: echo "CI workflow completed successfully - proceeding with auto-format"
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
