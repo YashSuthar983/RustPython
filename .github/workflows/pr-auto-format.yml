@@ -22,7 +22,7 @@ jobs:
       pull-requests: write
     name: Auto-format PR code
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 60
 
     steps:
       - name: Checkout PR branch
@@ -33,15 +33,46 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
+      # Check if CI workflow exists (wait max 2 minutes for it to appear)
+      - name: Check if CI has started
+        id: check_ci_started
+        continue-on-error: true
+        timeout-minutes: 2
+        uses: lewagon/wait-on-check-action@v1.3.4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 10
+          running-workflow-name: 'Auto-format PR code'
+          allowed-conclusions: success,skipped,neutral,failure,cancelled
+          verbose: true
+
+      # If CI started, wait for it to complete
       - name: Wait for CI workflow to complete
+        id: wait_for_ci
+        if: steps.check_ci_started.outcome == 'success'
+        timeout-minutes: 45
         uses: lewagon/wait-on-check-action@v1.3.4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           wait-interval: 30
-          # Wait for all other workflows (especially CI) to complete
           running-workflow-name: 'Auto-format PR code'
-          allowed-conclusions: success,skipped
+          allowed-conclusions: success,skipped,neutral
+          verbose: true
+
+      - name: Report CI status
+        run: |
+          if [ "${{ steps.check_ci_started.outcome }}" != "success" ]; then
+            echo "No CI checks detected (fork-to-fork PR or CI not configured)"
+            echo "Auto-formatting will proceed without waiting for CI."
+          elif [ "${{ steps.wait_for_ci.outcome }}" = "failure" ]; then
+            echo "CI checks failed or timed out"
+            echo "Auto-formatting will NOT proceed. CI failed"
+            exit 1
+          else
+            echo "CI checks completed successfully"
+          fi
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
